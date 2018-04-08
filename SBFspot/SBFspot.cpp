@@ -6,16 +6,16 @@
                               |____/|____/|_|  |___/ .__/ \___/ \__|
                                                    |_|
 
-	SBFspot - Yet another tool to read power production of SMAï¿½ solar/battery inverters
+	SBFspot - Yet another tool to read power production of SMA® solar/battery inverters
 	(c)2012-2018, SBF
 
 	Latest version can be found at https://github.com/SBFspot/SBFspot
 
 	Special Thanks to:
 	S. Pittaway: Author of "NANODE SMA PV MONITOR" on which this project is based.
-	W. Simons  : Early adopter, main tester and SMAdata2ï¿½ Protocol analyzer
-	G. Schnuff : SMAdata2ï¿½ Protocol analyzer
-	T. Frank   : Speedwireï¿½ support
+	W. Simons  : Early adopter, main tester and SMAdata2® Protocol analyzer
+	G. Schnuff : SMAdata2® Protocol analyzer
+	T. Frank   : Speedwire® support
 	Snowmiss   : User manual
 	All other users for their contribution to the success of this project
 
@@ -29,8 +29,8 @@
 	http://creativecommons.org/licenses/by-nc-sa/3.0/
 
 	You are free:
-		to Share ï¿½ to copy, distribute and transmit the work
-		to Remix ï¿½ to adapt the work
+		to Share — to copy, distribute and transmit the work
+		to Remix — to adapt the work
 	Under the following conditions:
 	Attribution:
 		You must attribute the work in the manner specified by the author or licensor
@@ -1350,7 +1350,7 @@ E_SBFSPOT ethInitConnection(InverterData *inverters[], char *IP_Address)
 
     	ethSend(pcktBuf, IP_Broadcast);
 
-    	//SMA inverter announces itï¿½s presence in response to the discovery request packet
+        //SMA inverter announces it´s presence in response to the discovery request packet
     	int bytesRead = ethRead(CommBuf, sizeof(CommBuf));
 
 		// if bytesRead < 0, a timeout has occurred
