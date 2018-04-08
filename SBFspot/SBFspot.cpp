@@ -6,16 +6,16 @@
                               |____/|____/|_|  |___/ .__/ \___/ \__|
                                                    |_|
 
-	SBFspot - Yet another tool to read power production of SMA® solar/battery inverters
+	SBFspot - Yet another tool to read power production of SMAï¿½ solar/battery inverters
 	(c)2012-2018, SBF
 
 	Latest version can be found at https://github.com/SBFspot/SBFspot
 
 	Special Thanks to:
 	S. Pittaway: Author of "NANODE SMA PV MONITOR" on which this project is based.
-	W. Simons  : Early adopter, main tester and SMAdata2® Protocol analyzer
-	G. Schnuff : SMAdata2® Protocol analyzer
-	T. Frank   : Speedwire® support
+	W. Simons  : Early adopter, main tester and SMAdata2ï¿½ Protocol analyzer
+	G. Schnuff : SMAdata2ï¿½ Protocol analyzer
+	T. Frank   : Speedwireï¿½ support
 	Snowmiss   : User manual
 	All other users for their contribution to the success of this project
 
@@ -29,8 +29,8 @@
 	http://creativecommons.org/licenses/by-nc-sa/3.0/
 
 	You are free:
-		to Share — to copy, distribute and transmit the work
-		to Remix — to adapt the work
+		to Share ï¿½ to copy, distribute and transmit the work
+		to Remix ï¿½ to adapt the work
 	Under the following conditions:
 	Attribution:
 		You must attribute the work in the manner specified by the author or licensor
@@ -99,6 +99,8 @@ int main(int argc, char **argv)
     char msg[80];
 
     int rc = 0;
+    int prevJSObj = 0;
+    int prevJSArrayObj = 0;
 
     Config cfg;
 
@@ -246,23 +248,30 @@ int main(int argc, char **argv)
 		return rc;
 	}
 
+//json start tag
+    if (cfg.json == 1)
+        printf("{\n");
+
 	// Synchronize plant time with system time
     // Only BT connected devices and if enabled in config _or_ requested by 123Solar
 	// Most probably Speedwire devices get their time from the local IP network
     if ((ConnType == CT_BLUETOOTH) && (cfg.synchTime > 0 || cfg.s123 == S123_SYNC ))
-		if ((rc = SetPlantTime(cfg.synchTime, cfg.synchTimeLow, cfg.synchTimeHigh)) != E_OK)
+		if ((rc = SetPlantTime(cfg.synchTime, cfg.synchTimeLow, cfg.synchTimeHigh)) != E_OK && (cfg.json != 1))
 			std::cerr << "SetPlantTime returned an error: " << rc << std::endl;
 
-	if ((rc = getInverterData(Inverters, sbftest)) != 0)
+	if ((rc = getInverterData(Inverters, sbftest)) != 0 && (cfg.json != 1))
         std::cerr << "getInverterData(sbftest) returned an error: " << rc << std::endl;
 
-	if ((rc = getInverterData(Inverters, SoftwareVersion)) != 0)
+	if ((rc = getInverterData(Inverters, SoftwareVersion)) != 0 && (cfg.json != 1))
         std::cerr << "getSoftwareVersion returned an error: " << rc << std::endl;
 
-    if ((rc = getInverterData(Inverters, TypeLabel)) != 0)
+    if ((rc = getInverterData(Inverters, TypeLabel)) != 0 && (cfg.json != 1))
         std::cerr << "getTypeLabel returned an error: " << rc << std::endl;
     else
     {
+        if (cfg.json == 1)
+            printf("   \"device\": [\n");
+
         for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
         {
 			if ((Inverters[inv]->DevClass == BatteryInverter) || (Inverters[inv]->SUSyID == 292))	//SB 3600-SE (Smart Energy)
@@ -279,15 +288,43 @@ int main(int argc, char **argv)
                 printf("Software Version: %s\n", Inverters[inv]->SWVersion);
                 printf("Serial number:    %lu\n", Inverters[inv]->Serial);
             }
+            else if (cfg.json == 1)
+            {
+                if (inv > 0)
+                    printf(",\n      {\n");
+                else
+                    printf("      {\n");
+                printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                printf("         \"deviceName\": \"%s\",\n", Inverters[inv]->DeviceName);
+                printf("         \"deviceClass\": \"%s%s\",\n", Inverters[inv]->DeviceClass, (Inverters[inv]->SUSyID == 292) ? " (with battery)":"");
+                printf("         \"deviceType\": \"%s\",\n", Inverters[inv]->DeviceType);
+                printf("         \"softwareVersion\": \"%s\",\n", Inverters[inv]->SWVersion);
+                printf("         \"serialNumber\": %lu\n", Inverters[inv]->Serial);
+                printf("      }\n");
+            }
+        }
+
+        if (cfg.json == 1)
+        {
+            printf("   ]");
+            prevJSObj = 1;
         }
     }
 
 	if (hasBatteryDevice)
 	{
-		if ((rc = getInverterData(Inverters, BatteryChargeStatus)) != 0)
+		if ((rc = getInverterData(Inverters, BatteryChargeStatus)) != 0 && (cfg.json != 1))
 	        std::cerr << "getBatteryChargeStatus returned an error: " << rc << std::endl;
 		else
 		{
+            if (cfg.json == 1)
+        {
+            if (prevJSObj)
+                printf(",\n   \"batteryChargingStatus\": [\n");
+            else
+                printf("   \"batteryChargingStatus\": [\n");
+        }
+
 			for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
 			{
 				if ((Inverters[inv]->DevClass == BatteryInverter) || (Inverters[inv]->hasBattery))
@@ -297,14 +334,42 @@ int main(int argc, char **argv)
 						printf("SUSyID: %d - SN: %lu\n", Inverters[inv]->SUSyID, Inverters[inv]->Serial);
 						printf("Batt. Charging Status: %lu%%\n", Inverters[inv]->BatChaStt);
 					}
+                    else if (cfg.json == 1)
+                    {
+                        if (inv > 0 && prevJSArrayObj)
+                            printf(",\n      {\n");
+                        else
+                        {
+                            printf("      {\n");
+                            prevJSArrayObj = 1;
+                        }
+                        printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                        printf("         \"status\": %lu%%\n", Inverters[inv]->BatChaStt);
+                        printf("      }\n");
+                    }
 				}
 			}
+
+            if (cfg.json == 1)
+            {
+                printf("   ]");
+                prevJSObj = 1;
+                prevJSArrayObj = 0;
+            }
 		}
 
-		if ((rc = getInverterData(Inverters, BatteryInfo)) != 0)
+		if ((rc = getInverterData(Inverters, BatteryInfo)) != 0 && (cfg.json != 1))
 	        std::cerr << "getBatteryInfo returned an error: " << rc << std::endl;
 		else
 		{
+            if (cfg.json == 1)
+            {
+                if (prevJSObj)
+                    printf(",\n   \"batteryInfo\": [\n");
+                else
+                    printf("   \"batteryInfo\": [\n");
+            }
+
 			for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
 			{
 				if ((Inverters[inv]->DevClass == BatteryInverter) || (Inverters[inv]->hasBattery))
@@ -316,14 +381,44 @@ int main(int argc, char **argv)
 						printf("Batt. Voltage    : %3.2fV\n", toVolt(Inverters[inv]->BatVol));
 						printf("Batt. Current    : %2.3fA\n", toAmp(Inverters[inv]->BatAmp));
 					}
+                    else if (cfg.json == 1)
+                    {
+                        if (inv > 0 && prevJSArrayObj)
+                            printf(",\n      {\n");
+                        else
+                        {
+                            printf("      {\n");
+                            prevJSArrayObj = 1;
+                        }
+                        printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                        printf("         \"temperature\": %3.1f,\n", (float)(Inverters[inv]->BatTmpVal / 10));
+                        printf("         \"voltage\": %3.2f,\n", toVolt(Inverters[inv]->BatVol));
+                        printf("         \"current\": %2.3f\n", toAmp(Inverters[inv]->BatAmp));
+                        printf("      }\n");
+                    }
 				}
 			}
+
+            if (cfg.json == 1)
+            {
+                printf("   ]");
+                prevJSObj = 1;
+                prevJSArrayObj = 0;
+            }
 		}
 
 		if ((rc = getInverterData(Inverters, MeteringGridMsTotW)) != 0)
 	        std::cerr << "getMeteringGridInfo returned an error: " << rc << std::endl;
 		else
 		{
+            if (cfg.json == 1)
+            {
+            if (prevJSObj)
+                printf(",\n   \"meteringGridInfo\": [\n");
+            else
+                printf("   \"meteringGridInfo\": [\n");
+            }
+
 			for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
 			{
 				if ((Inverters[inv]->DevClass == BatteryInverter) || (Inverters[inv]->hasBattery))
@@ -334,15 +429,44 @@ int main(int argc, char **argv)
 						printf("Grid Power Out : %dW\n", Inverters[inv]->MeteringGridMsTotWOut);
 						printf("Grid Power In  : %dW\n", Inverters[inv]->MeteringGridMsTotWIn);
 					}
+                    else if (cfg.json == 1)
+                    {
+                        if (inv > 0 && prevJSArrayObj)
+                            printf(",\n      {\n");
+                        else
+                        {
+                            printf("      {\n");
+                            prevJSArrayObj = 1;
+                        }
+                        printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                        printf("         \"gridPowerOut\": %d,\n", Inverters[inv]->MeteringGridMsTotWOut);
+                        printf("         \"gridPowerIn\": %d,\n", Inverters[inv]->MeteringGridMsTotWIn);
+                        printf("      }\n");
+                    }
 				}
 			}
+
+            if (cfg.json == 1)
+            {
+                printf("   ]");
+                prevJSObj = 1;
+                prevJSArrayObj = 0;
+            }
 		}
 	}
 
-    if ((rc = getInverterData(Inverters, DeviceStatus)) != 0)
+    if ((rc = getInverterData(Inverters, DeviceStatus)) != 0 && (cfg.json != 1))
         std::cerr << "getDeviceStatus returned an error: " << rc << std::endl;
     else
     {
+        if (cfg.json == 1)
+        {
+            if (prevJSObj)
+                printf(",\n   \"deviceStatus\": [\n");
+            else
+                printf("   \"deviceStatus\": [\n");
+        }
+
         for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
         {
             if (VERBOSE_NORMAL)
@@ -350,13 +474,37 @@ int main(int argc, char **argv)
                 printf("SUSyID: %d - SN: %lu\n", Inverters[inv]->SUSyID, Inverters[inv]->Serial);
 				printf("Device Status:      %s\n", tagdefs.getDesc(Inverters[inv]->DeviceStatus, "?").c_str());
             }
+            else if (cfg.json == 1)
+            {
+                if (inv > 0)
+                    printf(",\n      {\n");
+                else
+                    printf("      {\n");
+                printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                printf("         \"status\": \"%s\"\n", tagdefs.getDesc(Inverters[inv]->DeviceStatus, "?").c_str());
+                printf("      }\n");
+            }
+        }
+
+        if (cfg.json == 1)
+        {
+            printf("   ]");
+            prevJSObj = 1;
         }
     }
 
-	if ((rc = getInverterData(Inverters, InverterTemperature)) != 0)
+	if ((rc = getInverterData(Inverters, InverterTemperature)) != 0 && (cfg.json != 1))
         std::cerr << "getInverterTemperature returned an error: " << rc << std::endl;
     else
     {
+        if (cfg.json == 1)
+        {
+            if (prevJSObj)
+                printf(",\n   \"inverterTemperature\": [\n");
+            else
+                printf("   \"inverterTemperature\": [\n");
+        }
+
         for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
         {
             if (VERBOSE_NORMAL)
@@ -364,15 +512,39 @@ int main(int argc, char **argv)
                 printf("SUSyID: %d - SN: %lu\n", Inverters[inv]->SUSyID, Inverters[inv]->Serial);
 				printf("Device Temperature: %3.1f%sC\n", ((float)Inverters[inv]->Temperature / 100), SYM_DEGREE); // degree symbol is different on windows/linux
             }
+            else if (cfg.json == 1)
+            {
+                if (inv > 0)
+                    printf(",\n      {\n");
+                else
+                    printf("      {\n");
+                printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                printf("         \"deviceTemperature\": %3.1f\n", ((float)Inverters[inv]->Temperature / 100));
+                printf("      }\n");
+            }
+        }
+
+        if (cfg.json == 1)
+        {
+            printf("   ]");
+            prevJSObj = 1;
         }
     }
 
 	if (Inverters[0]->DevClass == SolarInverter)
     {
-        if ((rc = getInverterData(Inverters, GridRelayStatus)) != 0)
+        if ((rc = getInverterData(Inverters, GridRelayStatus)) != 0 && (cfg.json != 1))
 	        std::cerr << "getGridRelayStatus returned an error: " << rc << std::endl;
         else
         {
+            if (cfg.json == 1)
+            {
+                if (prevJSObj)
+                    printf(",\n   \"gridRelayStatus\": [\n");
+                else
+                    printf("   \"gridRelayStatus\": [\n");
+            }
+
             for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
             {
                 if (Inverters[inv]->DevClass == SolarInverter)
@@ -382,20 +554,48 @@ int main(int argc, char **argv)
                         printf("SUSyID: %d - SN: %lu\n", Inverters[inv]->SUSyID, Inverters[inv]->Serial);
 						printf("GridRelay Status:      %s\n", tagdefs.getDesc(Inverters[inv]->GridRelayStatus, "?").c_str());
                     }
+                    else if (cfg.json == 1)
+                    {
+                        if (inv > 0 && prevJSArrayObj)
+                            printf(",\n      {\n");
+                        else
+                        {
+                            printf("      {\n");
+                            prevJSArrayObj = 1;
+                        }
+                        printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                        printf("         \"status\": \"%s\"\n", tagdefs.getDesc(Inverters[inv]->GridRelayStatus, "?").c_str());
+                        printf("      }\n");
+                    }
                 }
+            }
+
+            if (cfg.json == 1)
+            {
+                printf("   ]");
+                prevJSObj = 1;
+                prevJSArrayObj = 0;
             }
         }
     }
 
-    if ((rc = getInverterData(Inverters, MaxACPower)) != 0)
+    if ((rc = getInverterData(Inverters, MaxACPower)) != 0 && (cfg.json != 1))
         std::cerr << "getMaxACPower returned an error: " << rc << std::endl;
     else
     {
         //TODO: REVIEW THIS PART (getMaxACPower & getMaxACPower2 should be 1 function)
-        if ((Inverters[0]->Pmax1 == 0) && (rc = getInverterData(Inverters, MaxACPower2)) != 0)
+        if ((Inverters[0]->Pmax1 == 0) && (rc = getInverterData(Inverters, MaxACPower2)) != 0 && (cfg.json != 1))
 	        std::cerr << "getMaxACPower2 returned an error: " << rc << std::endl;
         else
         {
+            if (cfg.json == 1)
+            {
+                if (prevJSObj)
+                    printf(",\n   \"maxACPower\": [\n");
+                else
+                    printf("   \"maxACPower\": [\n");
+            }
+
             for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
             {
                 if (VERBOSE_NORMAL)
@@ -405,17 +605,43 @@ int main(int argc, char **argv)
                     printf("Pac max phase 2: %luW\n", Inverters[inv]->Pmax2);
                     printf("Pac max phase 3: %luW\n", Inverters[inv]->Pmax3);
                 }
+                else if (cfg.json == 1)
+                {
+                    if (inv > 0)
+                        printf(",\n      {\n");
+                    else
+                        printf("      {\n");
+                    printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                    printf("         \"pMaxPhase1\": %lu,\n", Inverters[inv]->Pmax1);
+                    printf("         \"pMaxPhase2\": %lu,\n", Inverters[inv]->Pmax2);
+                    printf("         \"pMaxPhase3\": %lu\n", Inverters[inv]->Pmax3);
+                    printf("      }\n");
+                }
+            }
+
+            if (cfg.json == 1)
+            {
+                printf("   ]");
+                prevJSObj = 1;
             }
         }
     }
 
-    if ((rc = getInverterData(Inverters, EnergyProduction)) != 0)
+    if ((rc = getInverterData(Inverters, EnergyProduction)) != 0 && (cfg.json != 1))
         std::cerr << "getEnergyProduction returned an error: " << rc << std::endl;
 
-    if ((rc = getInverterData(Inverters, OperationTime)) != 0)
+    if ((rc = getInverterData(Inverters, OperationTime)) != 0 && (cfg.json != 1))
         std::cerr << "getOperationTime returned an error: " << rc << std::endl;
     else
     {
+        if (cfg.json == 1)
+        {
+            if (prevJSObj)
+                printf(",\n   \"energyProduction\": [\n");
+            else
+                printf("   \"energyProduction\": [\n");
+        }
+
         for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
         {
             if (VERBOSE_NORMAL)
@@ -427,18 +653,45 @@ int main(int argc, char **argv)
                 printf("\tOperation Time: %.2fh\n", toHour(Inverters[inv]->OperationTime));
                 printf("\tFeed-In Time  : %.2fh\n", toHour(Inverters[inv]->FeedInTime));
             }
+            else if (cfg.json == 1)
+            {
+                if (inv > 0)
+                    printf(",\n      {\n");
+                else
+                    printf("      {\n");
+                printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                printf("         \"eToday\": %lld,\n", Inverters[inv]->EToday);
+                printf("         \"eTotal\": %lld,\n", Inverters[inv]->ETotal);
+                printf("         \"operationTime\": %.2f,\n", toHour(Inverters[inv]->OperationTime));
+                printf("         \"feedInTime\": %.2f\n", toHour(Inverters[inv]->FeedInTime));
+                printf("      }\n");
+            }
+        }
+
+        if (cfg.json == 1)
+        {
+            printf("   ]");
+            prevJSObj = 1;
         }
     }
 
-    if ((rc = getInverterData(Inverters, SpotDCPower)) != 0)
+    if ((rc = getInverterData(Inverters, SpotDCPower)) != 0 && (cfg.json != 1))
         std::cerr << "getSpotDCPower returned an error: " << rc << std::endl;
 
-    if ((rc = getInverterData(Inverters, SpotDCVoltage)) != 0)
+    if ((rc = getInverterData(Inverters, SpotDCVoltage)) != 0 && (cfg.json != 1))
         std::cerr << "getSpotDCVoltage returned an error: " << rc << std::endl;
 
     //Calculate missing DC Spot Values
     if (cfg.calcMissingSpot == 1)
         CalcMissingSpot(Inverters[0]);
+
+    if (cfg.json == 1)
+    {
+        if (prevJSObj)
+            printf(",\n   \"dcSpotData\": [\n");
+        else
+            printf("   \"dcSpotData\": [\n");
+    }
 
     for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
     {
@@ -450,20 +703,53 @@ int main(int argc, char **argv)
             printf("\tString 1 Pdc: %7.3fkW - Udc: %6.2fV - Idc: %6.3fA\n", tokW(Inverters[inv]->Pdc1), toVolt(Inverters[inv]->Udc1), toAmp(Inverters[inv]->Idc1));
             printf("\tString 2 Pdc: %7.3fkW - Udc: %6.2fV - Idc: %6.3fA\n", tokW(Inverters[inv]->Pdc2), toVolt(Inverters[inv]->Udc2), toAmp(Inverters[inv]->Idc2));
         }
+        else if (cfg.json == 1)
+        {
+            if (inv > 0)
+                printf(",\n      {\n");
+            else
+                printf("      {\n");
+            printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+            printf("         \"string1\": {\n");
+            printf("            \"p\": %ld,\n", Inverters[inv]->Pdc1);
+            printf("            \"u\": %6.2f,\n", toVolt(Inverters[inv]->Udc1));
+            printf("            \"i\": %6.3f\n", toAmp(Inverters[inv]->Idc1));
+            printf("         },\n");
+            printf("         \"string2\": {\n");
+            printf("            \"p\": %ld,\n", Inverters[inv]->Pdc2);
+            printf("            \"u\": %6.2f,\n", toVolt(Inverters[inv]->Udc2));
+            printf("            \"i\": %6.3f\n", toAmp(Inverters[inv]->Idc2));
+            printf("         }\n");
+            printf("      }\n");
+        }
     }
 
-    if ((rc = getInverterData(Inverters, SpotACPower)) != 0)
+    if (cfg.json == 1)
+    {
+        printf("   ]");
+        prevJSObj = 1;
+    }
+
+    if ((rc = getInverterData(Inverters, SpotACPower)) != 0 && (cfg.json != 1))
         std::cerr << "getSpotACPower returned an error: " << rc << std::endl;
 
-    if ((rc = getInverterData(Inverters, SpotACVoltage)) != 0)
+    if ((rc = getInverterData(Inverters, SpotACVoltage)) != 0 && (cfg.json != 1))
         std::cerr << "getSpotACVoltage returned an error: " << rc << std::endl;
 
-    if ((rc = getInverterData(Inverters, SpotACTotalPower)) != 0)
+    if ((rc = getInverterData(Inverters, SpotACTotalPower)) != 0 && (cfg.json != 1))
         std::cerr << "getSpotACTotalPower returned an error: " << rc << std::endl;
 
     //Calculate missing AC Spot Values
     if (cfg.calcMissingSpot == 1)
         CalcMissingSpot(Inverters[0]);
+
+    if (cfg.json == 1)
+    {
+        if (prevJSObj)
+            printf(",\n   \"acSpotData\": [\n");
+        else
+            printf("   \"acSpotData\": [\n");
+    }
 
     for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
     {
@@ -476,12 +762,51 @@ int main(int argc, char **argv)
             printf("\tPhase 3 Pac : %7.3fkW - Uac: %6.2fV - Iac: %6.3fA\n", tokW(Inverters[inv]->Pac3), toVolt(Inverters[inv]->Uac3), toAmp(Inverters[inv]->Iac3));
             printf("\tTotal Pac   : %7.3fkW\n", tokW(Inverters[inv]->TotalPac));
         }
+        else if (cfg.json == 1)
+        {
+            if (inv > 0)
+                    printf(",\n      {\n");
+                else
+                    printf("         {\n");
+                printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                printf("         \"phase1\": {\n");
+                printf("            \"p\": %ld,\n", Inverters[inv]->Pac1);
+                printf("            \"u\": %6.2f,\n", toVolt(Inverters[inv]->Uac1));
+                printf("            \"i\": %6.3f\n", toAmp(Inverters[inv]->Iac1));
+                printf("         },\n");
+                printf("         \"phase2\": {\n");
+                printf("            \"p\": %ld,\n", Inverters[inv]->Pac2);
+                printf("            \"u\": %6.2f,\n", toVolt(Inverters[inv]->Uac2));
+                printf("            \"i\": %6.3f\n", toAmp(Inverters[inv]->Iac2));
+                printf("         },\n");
+                printf("         \"phase3\": {\n");
+                printf("            \"p\": %ld,\n", Inverters[inv]->Pac3);
+                printf("            \"u\": %6.2f,\n", toVolt(Inverters[inv]->Uac3));
+                printf("            \"i\": %6.3f\n", toAmp(Inverters[inv]->Iac3));
+                printf("         },\n");
+                printf("         \"pTotal\": %ld\n", Inverters[inv]->TotalPac);
+                printf("      }\n");
+        }
     }
 
-    if ((rc = getInverterData(Inverters, SpotGridFrequency)) != 0)
+    if (cfg.json == 1)
+    {
+            printf("   ]");
+            prevJSObj = 1;
+    }
+
+    if ((rc = getInverterData(Inverters, SpotGridFrequency)) != 0 && (cfg.json != 1))
         std::cerr << "getSpotGridFrequency returned an error: " << rc << std::endl;
     else
     {
+        if (cfg.json == 1)
+        {
+            if (prevJSObj)
+                printf(",\n   \"gridFrequency\": [\n");
+            else
+                printf("   \"gridFrequency\": [\n");
+        }
+
         for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
         {
             if (VERBOSE_NORMAL)
@@ -489,11 +814,35 @@ int main(int argc, char **argv)
                 printf("SUSyID: %d - SN: %lu\n", Inverters[inv]->SUSyID, Inverters[inv]->Serial);
                 printf("Grid Freq. : %.2fHz\n", toHz(Inverters[inv]->GridFreq));
             }
+            else if (cfg.json == 1)
+            {
+                if (inv > 0)
+                    printf(",\n      {\n");
+                else
+                    printf("      {\n");
+                printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                printf("         \"frequency\": %.2f\n", toHz(Inverters[inv]->GridFreq));
+                printf("      }\n");
+            }
+        }
+
+        if (cfg.json == 1)
+        {
+            printf("   ]");
+            prevJSObj = 1;
         }
     }
 
     if (Inverters[0]->DevClass == SolarInverter)
 	{
+        if (cfg.json == 1)
+        {
+            if (prevJSObj)
+                printf(",\n   \"timeInfo\": [\n");
+            else
+                printf("   \"timeInfo\": [\n");
+        }
+
 		for (int inv=0; Inverters[inv]!=NULL && inv<MAX_INVERTERS; inv++)
 		{
 			if (VERBOSE_NORMAL)
@@ -508,7 +857,25 @@ int main(int argc, char **argv)
 				if (Inverters[inv]->SleepTime > 0)
 					printf("Inverter Sleep Time  : %s\n", strftime_t(cfg.DateTimeFormat, Inverters[inv]->SleepTime));
 			}
-		}
+            else if (cfg.json == 1)
+            {
+                if (inv > 0)
+                    printf(",\n      {\n");
+                else
+                    printf("      {\n");
+                printf("         \"id\": %d,\n", Inverters[inv]->SUSyID);
+                printf("         \"currentInverterTime\": \"%s\",\n", strftime_t(cfg.DateTimeFormat, Inverters[inv]->InverterDatetime));
+                printf("         \"inverterWakeUpTime\": \"%s\",\n", strftime_t(cfg.DateTimeFormat, Inverters[inv]->WakeupTime));
+                printf("         \"inverterSleepTime\": \"%s\"\n", strftime_t(cfg.DateTimeFormat, Inverters[inv]->SleepTime));
+                printf("      }\n");
+		    }
+	    }
+
+        if (cfg.json == 1)
+        {
+            printf("   ]");
+            prevJSObj = 1;
+        }
 	}
 
 	if (Inverters[0]->DevClass == SolarInverter)
@@ -557,7 +924,7 @@ int main(int argc, char **argv)
 
     for (int count=0; count<cfg.archDays; count++)
     {
-        if ((rc = ArchiveDayData(Inverters, arch_time)) != E_OK)
+        if ((rc = ArchiveDayData(Inverters, arch_time)) != E_OK && cfg.json != 1)
         {
             if (rc != E_ARCHNODATA)
 		        std::cerr << "ArchiveDayData returned an error: " << rc << std::endl;
@@ -708,6 +1075,12 @@ int main(int argc, char **argv)
 
 
     if (VERBOSE_NORMAL) print_error(stdout, PROC_INFO, "Done.\n");
+
+    if (cfg.json == 1)
+    {
+        //json end tag
+        printf("\n}\n");
+    }
 
     return 0;
 }
@@ -977,7 +1350,7 @@ E_SBFSPOT ethInitConnection(InverterData *inverters[], char *IP_Address)
 
     	ethSend(pcktBuf, IP_Broadcast);
 
-    	//SMA inverter announces it´s presence in response to the discovery request packet
+    	//SMA inverter announces itï¿½s presence in response to the discovery request packet
     	int bytesRead = ethRead(CommBuf, sizeof(CommBuf));
 
 		// if bytesRead < 0, a timeout has occurred
@@ -1771,6 +2144,7 @@ int parseCmdline(int argc, char **argv, Config *cfg)
     cfg->nocsv = 0;
     cfg->nospot = 0;
 	cfg->nosql = 0;
+    cfg->json = 0;
     // 123Solar Web Solar logger support(http://www.123solar.org/)
     // This is an undocumented feature and should only be used for 123solar
     cfg->s123 = S123_NOP;
@@ -1792,6 +2166,17 @@ int parseCmdline(int argc, char **argv, Config *cfg)
 		if (stricmp(argv[i], "-?") == 0)
             help_requested = true;
 	}
+
+    //Set json mode
+    for (int i = 1; i < argc; i++)
+    {
+        if (stricmp(argv[i], "-json") == 0)
+        {
+            cfg->quiet = 1;
+            cfg->json = 1;
+            break;
+        }
+    }
 
 	// Get path of executable
 	// Fix Issue 169 (expand symlinks)
@@ -2048,6 +2433,8 @@ int parseCmdline(int argc, char **argv, Config *cfg)
 			cfg->verbose = 2;
 
 		cfg->forceInq = 1;
+        // Disable json when syncing time
+        cfg->json = 0;
 	}
 
     //Disable verbose/debug modes when silent
@@ -2055,6 +2442,14 @@ int parseCmdline(int argc, char **argv, Config *cfg)
     {
         cfg->verbose = 0;
         cfg->debug = 0;
+    }
+
+    //Disable all other output for -json (quite already set to 1 above)
+    if (cfg->json == 1)
+    {
+        cfg->nocsv = 1;
+        cfg->nosql = 1;
+        cfg->nospot = 1;
     }
 
     return 0;
@@ -2105,7 +2500,8 @@ void SayHello(int ShowHelp)
 		std::cout << " -password:xxxx      Installer password\n";
 		std::cout << " -loadlive           Use predefined settings for manual upload to pvoutput.org\n";
 		std::cout << " -startdate:YYYYMMDD Set start date for historic data retrieval\n";
-		std::cout << " -settime            Sync inverter time with host time\n" << std::endl;
+		std::cout << " -settime            Sync inverter time with host time\n";
+        std::cout << " -json               Print data in json format implies -q, -nocsv, -nosql, -sp0 and -v0\n" << std::endl;
 
 		std::cout << "Libraries used:\n";
 #if defined(USE_SQLITE)
